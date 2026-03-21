@@ -63,14 +63,26 @@ sub found_in_path {
 # Go ahead and install the thing
 {
   my $lc_ds;
+  my $lc_cm;
   $lc_ds = ($bindest . '/cartovanta');
   system('mkdir','-p',$bindest);
   if ( -d $lc_ds )
   {
     die("\nFATAL ERROR:\n  Why is a directory present at this location?\n  " . $lc_ds . "\n\n");
   }
-  system('cp','cartovanta.pl',$lc_ds);
+  #system('cp','cartovanta.pl',$lc_ds);
+  $lc_cm = 'cat cartovanta.pl > ' . &shell_quote($lc_ds);
+  system($lc_cm);
   system('chmod','755',$lc_ds);
+}
+
+
+sub shell_quote {
+  my $lc_strg;
+  ($lc_strg) = @_;
+  return "''" if !defined($lc_strg) || $lc_strg eq '';
+  $lc_strg =~ s/'/'"'"'/g;
+  return "'$lc_strg'";
 }
 
 
