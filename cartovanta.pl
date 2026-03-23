@@ -51,6 +51,11 @@ foreach $patheach (@pathpart)
     if ( -x $possib )
     {
       exec($possib,@arguma);
+      die("\nchobakwrap: Execution failed for `" . $subcn . "`:\n" .
+        "  Please inspect the following executable:\n" .
+        "    " . $possib . "\n" .
+        "  Permissions or an ACL entry may be preventing the file from executing.\n" .
+      "\n");
     }
   }
 }
