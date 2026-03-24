@@ -178,6 +178,15 @@ sub shell_quote {
   return "'$lc_strg'";
 }
 
+sub install_each {
+  my $lc_ech;
+  foreach $lc_ech (@_)
+  {
+    system('perl','subc-install-res/core-plain.pl',$lc_ech,$cartov_bin);
+  }
+}
+&install_each('mdview');
+&install_each('subc-install');
 
 
 
