@@ -15,9 +15,50 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use strict;
+use warnings;
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use Getopt::Long qw(GetOptions);
+
+my $starting_dir; # Directory from which the install is invoked
+my %opt = (); # Home of the Command-Line Options
+
+GetOptions(
+  'fakeroot=s'   => \$opt{'fakeroot'},
+  'bindir=s'   => \$opt{'bindir'},
+  'cartovanta-bindir=s' => \$opt{'cartovanta_bindir'},
+  'systemwide'  => \$opt{'systemwide'},
+  'help'        => \$opt{'help'},
+) or die "Bad command-line option.\n";
+
+if ( $opt{'systemwide'} )
+{  if ( $> != 0 )
+  {
+    die "Systemwide installation requires root privileges.\n";
+  }
+}
+
+# Journey to the install script's own directory:
+{
+  my $lc_sldir;
+  
+  # Find where we came from
+  $starting_dir = abs_path('.') or die "You did not invoke this install script from a valid place.\n";
+  
+  # Find where we should go
+  $lc_sldir = dirname( abs_path($0) )
+    or die "Could not determine script directory for $0\n";
+  
+  # Go there.
+  chdir $lc_sldir
+    or die "Could not chdir to $lc_sldir: $!\n";
+}
+
+
 
 my @pathset; # All locations on the PATH
 my $bindest; # Install destination for -cartovanta-
+my $cartov_bin; # Install destination for -cartovanta- subcommands
 
 # Find @pathset
 {
@@ -26,11 +67,57 @@ my $bindest; # Install destination for -cartovanta-
   @pathset = split(quotemeta(':'),$lc_a);
 }
 
+# Find $cartov_bin
+$cartov_bin = &find_cartovbin();
+sub find_cartovbin {
+  my $lc_hme;
+  
+  if ( $opt{'fakeroot'} )
+  {
+    my $lc2_ds;
+    $lc2_ds = $opt{'fakeroot'};
+    if ( $opt{'cartovanta_bindir'} )
+    {
+      $lc2_ds .= $opt{'cartovanta_bindir'};
+    } else {
+      $lc2_ds .= '/usr/local/cartovanta-bin';
+    }
+    return $lc2_ds;
+  }
+  if ( $opt{'cartovanta_bindir'} ) { return($opt{'cartovanta_bindir'}); }
+  
+  if ( $opt{'systemwide'} ) { return('/usr/local/bin'); }
+  
+  $lc_hme = $ENV{'HOME'};
+  if ( $lc_hme eq '' )
+  {
+    $lc_hme = `(cd && pwd)`; chomp($lc_hme);
+  }
+  return($lc_hme . '/local/cartovanta-bin');
+}
+
 # Find $bindest
-$bindest = &findbin;
+$bindest = &findbin();
 sub findbin {
   my $lc_hme;
   my $lc_pos;
+  
+  if ( $opt{'fakeroot'} )
+  {
+    my $lc2_ds;
+    $lc2_ds = $opt{'fakeroot'};
+    if ( $opt{'bindir'} )
+    {
+      $lc2_ds .= $opt{'bindir'};
+    } else {
+      $lc2_ds .= '/usr/local/bin';
+    }
+    return $lc2_ds;
+  }
+  if ( $opt{'bindir'} ) { return($opt{'bindir'}); }
+  
+  if ( $opt{'systemwide'} ) { return('/usr/local/bin'); }
+  
   $lc_hme = $ENV{'HOME'};
   if ( $lc_hme eq '' )
   {
@@ -47,6 +134,12 @@ sub findbin {
     "    " . $lc_hme . "/local/bin\n" .
     "    " . $lc_hme . "/bin\n" .
   "\n");
+}
+
+if ( \$opt{'help'} )
+{
+  exec('perl','mdview-res/core-plain.pl','install-helpfile.md');
+  die("\nProblem invoking helpfile.\n\n");
 }
 
 # And when I try ot find $bindest, I will need to check if
