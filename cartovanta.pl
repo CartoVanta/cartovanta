@@ -25,6 +25,7 @@ my $pathvar; # The path along wich to search for subcommands:
 my @pathpart; # $pathvar after being chopped by colon
 my $patheach; # Each element of path
 my $possib; # Each possible location of subcommand
+my $numbarg; # Number of arguments (AFTER submodule name)
 
 # Process the command line:
 @arguma = @ARGV;
@@ -35,6 +36,7 @@ if ( $counto < 0.5 )
 }
 $subcn = shift(@arguma);
 $subcm = $subcn . '-exe';
+$numbarg = @arguma;
 
 # Put together the value for $pathvar
 $pathvar = $ENV{'CARTOVANTA_PATH'};
@@ -50,6 +52,20 @@ foreach $patheach (@pathpart)
   {
     if ( -x $possib )
     {
+      if ( $numbarg > 0.5 )
+      {
+        if ( $arguma[0] eq '--help' )
+        {
+          my $lc5_hf;
+          $lc5_hf = $patheach . '/' . $subcn . '-res/helpfile.md';
+          if ( -f $lc5_hf )
+          {
+            exec('cartovanta','mdview',$lc5_hf);
+          }
+          die("\nCould not display helpfile for: cartovanta " . $subcn . "\n\n");
+        }
+      }
+      
       exec($possib,@arguma);
       die("\nchobakwrap: Execution failed for `" . $subcn . "`:\n" .
         "  Please inspect the following executable:\n" .
