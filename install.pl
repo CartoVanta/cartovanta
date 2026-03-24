@@ -136,7 +136,7 @@ sub findbin {
   "\n");
 }
 
-if ( \$opt{'help'} )
+if ( $opt{'help'} )
 {
   exec('perl','mdview-res/core-plain.pl','install-helpfile.md');
   die("\nProblem invoking helpfile.\n\n");
