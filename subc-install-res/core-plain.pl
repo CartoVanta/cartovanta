@@ -101,6 +101,7 @@ sub shut_the_tak {
 }
 
 $trysource = $modnom . '-res/core-plain.pl';
+if ( -f $trysource )
 {
   &open_the_tak();
   print TAK 'use strict;
@@ -122,6 +123,32 @@ exec(\'perl\',($resdir . \'/core-plain.pl\'),@ARGV);
   exit(0);
 }
 
+$trysource = $modnom . '-res/core-plain.swift';
+if ( -f $trysource )
+{
+  &open_the_tak();
+  print TAK 'use strict;
+use warnings;
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+
+my $resdir;
+
+$resdir = dirname(abs_path($0)) or die "\nFATAL ERROR finding \'cartovanta\' resource directory.\n\n";
+$resdir .= \'/';
+  print TAK $modnom;
+  print TAK '-res\';
+exec(\'swift\',($resdir . \'/core-plain.swift\'),@ARGV);
+
+';
+  &shut_the_tak();
+  &install_the_res();
+  exit(0);
+}
+
+die("\nCould not install 'cartovanta' subcommand: " . $modnom .
+ " :\nNo script source found.\n\n"
+);
 
 
 
