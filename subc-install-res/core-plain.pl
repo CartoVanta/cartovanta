@@ -74,18 +74,6 @@ sub install_the_res {
   if ( -f $lc_tmp ) { die "\nThere's a file at:\n  $lc_tmp :\n\n"; }
 }
 
-$trysource = $modnom . '-exe.pl';
-if ( -f ( $trysource ) )
-{
-  my $lc_ds;
-  my $lc_cm;
-  $lc_ds = $destdir . '/' . $modnom . '-exe';
-  system('rm','-rf',$lc_ds);
-  $lc_cm = "cat " . &shlq($trysource) . ' > ' . &shlq($lc_ds);
-  system($lc_cm);
-  &install_the_res();
-  exit(0);
-}
 
 sub open_the_tak {
   my $lc_cm;
