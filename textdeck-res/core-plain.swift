@@ -76,6 +76,7 @@ struct Options {
     let inputFilePath: String
     let outputDirectoryPath: String
     var explicitSize: (Int, Int)?
+    var explicitHeight: Int?
     var defaultFontName: String = "Helvetica"
     var generalFontSize: Double?
     var lineOverrides: [Int: LineStyleOverride] = [:]
@@ -105,6 +106,7 @@ Required positional arguments:
 
 Options:
   --size [width] [height]      Override card dimensions instead of inferring them from the back image.
+  --height [pixels]            Override only the deck.json card height while preserving the base aspect ratio.
   --font [font-name]           Set the default font for all cards. Default: Helvetica.
   --lfont [line#] [font-name]  Set the font for an explicit \\n-separated line number, starting at 1.
   --fsize [font-size]          Set the general font size in points/pixels.
@@ -215,6 +217,12 @@ func parseArguments(_ args: [String]) throws -> Options? {
             guard w > 0, h > 0 else { throw CLIError(message: "--size values must be positive.") }
             options.explicitSize = (w, h)
             i += 3
+        case "--height":
+            let vals = try require(1)
+            let h = try parseInt(vals[0], option: arg)
+            guard h > 0 else { throw CLIError(message: "--height must be positive.") }
+            options.explicitHeight = h
+            i += 2
         case "--font":
             let vals = try require(1)
             options.defaultFontName = vals[0]
@@ -774,6 +782,9 @@ func createOutputStructure(options: Options, cards: [ParsedLine]) throws {
     let finalSize = options.explicitSize ?? inferredSize
     let width = finalSize.0
     let height = finalSize.1
+    let manifestHeight = options.explicitHeight ?? height
+    let manifestWidth = Int((Double(width) * Double(manifestHeight) / Double(height)).rounded())
+    guard manifestWidth > 0 else { throw CLIError(message: "--height results in an invalid deck.json width.") }
 
     let hMargin = options.horizontalMargin ?? Int(round(Double(width) * 0.10))
     let vMargin = options.verticalMargin ?? Int(round(Double(height) * 0.12))
@@ -835,7 +846,7 @@ func createOutputStructure(options: Options, cards: [ParsedLine]) throws {
     let outputDirName = deriveDeckName(from: outputURL.path)
     let deckName = options.deckName ?? outputDirName
     let deckId = options.deckId ?? sanitizeDeckId(outputDirName)
-    let deck = DeckFile(format: cartoVantaFormatIdentifier, deckId: deckId, deckName: deckName, version: options.version, backImage: "imagia/\(backFilename)", cardSize: CardSize(width: width, height: height), meta: [:], cards: jsonCards)
+    let deck = DeckFile(format: cartoVantaFormatIdentifier, deckId: deckId, deckName: deckName, version: options.version, backImage: "imagia/\(backFilename)", cardSize: CardSize(width: manifestWidth, height: manifestHeight), meta: [:], cards: jsonCards)
     let outerMeta = OuterMetaFile(format: cartoVantaFormatIdentifier, deckName: deckName, meta: [:])
 
     let encoder = JSONEncoder()
