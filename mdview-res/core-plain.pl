@@ -249,35 +249,35 @@ sub render_markdown {
         # Headings are handled separately by level so the most important levels
         # can receive underline-style decoration.
         if ($lc_line =~ /\A(#{1,6})[ \t]+(.*)\z/) {
-            my $lc_level;
-            my $lc_text;
-            my $lc_prefix;
-            my $lc_rendered;
-            my $lc_rule_len;
+            my $lc2_level;
+            my $lc2_text;
+            my $lc2_prefix;
+            my $lc2_rendered;
+            my $lc2_rule_len;
 
             flush_para(\@lc_para, \@lc_out, $lc_width);
 
-            $lc_level = length($1);
-            $lc_text = $2;
-            $lc_text =~ s/\s+\z//;
-            $lc_text = render_inline($lc_text);
+            $lc2_level = length($1);
+            $lc2_text = $2;
+            $lc2_text =~ s/\s+\z//;
+            $lc2_text = render_inline($lc2_text);
 
-            if ($lc_level == 1) {
-                $lc_rendered = stylize('h1', ('  ' . $lc_text));
-                push @lc_out, $lc_rendered . "\n";
-                $lc_rule_len = visible_length(strip_ansi($lc_text));
-                push @lc_out, stylize('h1rule', ('  ' . ('=' x $lc_rule_len))) . "\n\n";
+            if ($lc2_level == 1) {
+                $lc2_rendered = stylize('h1', ('  ' . $lc2_text));
+                push @lc_out, $lc2_rendered . "\n";
+                $lc2_rule_len = visible_length(strip_ansi($lc2_text));
+                push @lc_out, stylize('h1rule', ('  ' . ('=' x $lc2_rule_len))) . "\n\n";
             }
-            elsif ($lc_level == 2) {
-                $lc_rendered = stylize('h2', $lc_text);
-                push @lc_out, $lc_rendered . "\n";
-                $lc_rule_len = visible_length(strip_ansi($lc_text));
-                push @lc_out, stylize('h2rule', ('-' x $lc_rule_len)) . "\n\n";
+            elsif ($lc2_level == 2) {
+                $lc2_rendered = stylize('h2', $lc2_text);
+                push @lc_out, $lc2_rendered . "\n";
+                $lc2_rule_len = visible_length(strip_ansi($lc2_text));
+                push @lc_out, stylize('h2rule', ('-' x $lc2_rule_len)) . "\n\n";
             }
             else {
-                $lc_prefix = ('#' x $lc_level) . ' ';
-                $lc_rendered = wrap_styled_text($lc_prefix . $lc_text, $lc_width, '');
-                push @lc_out, stylize('h3plus', $lc_rendered) . "\n\n";
+                $lc2_prefix = ('#' x $lc2_level) . ' ';
+                $lc2_rendered = wrap_styled_text($lc2_prefix . $lc2_text, $lc_width, '');
+                push @lc_out, stylize('h3plus', $lc2_rendered) . "\n\n";
             }
 
             next;
@@ -286,13 +286,15 @@ sub render_markdown {
         # Consume a contiguous run of unordered list items as one block,
         # rendering each item with a normalized bullet marker.
         if ($lc_line =~ /\A([ \t]*)([-*+])[ \t]+(.*)\z/) {
-            my $lc_item;
+            my $lc2_item;
+            my $lc2_indent;
 
             flush_para(\@lc_para, \@lc_out, $lc_width);
 
             while ($lc_i <= $#lc_lines && $lc_lines[$lc_i] =~ /\A([ \t]*)([-*+])[ \t]+(.*)\z/) {
-                $lc_item = $3;
-                push @lc_out, render_list_item('• ', $lc_item, $lc_width);
+                $lc2_indent = $1;
+                $lc2_item = $3;
+                push @lc_out, render_list_item('• ', $lc2_item, $lc_width, $lc2_indent);
                 $lc_i++;
             }
 
@@ -311,17 +313,19 @@ sub render_markdown {
         # Consume a contiguous run of ordered list items while preserving each
         # item's visible number in the rendered prefix.
         if ($lc_line =~ /\A([ \t]*)(\d+)\.[ \t]+(.*)\z/) {
-            my $lc_num;
-            my $lc_item;
-            my $lc_prefix;
+            my $lc2_num;
+            my $lc2_item;
+            my $lc2_prefix;
+            my $lc2_indent;
 
             flush_para(\@lc_para, \@lc_out, $lc_width);
 
             while ($lc_i <= $#lc_lines && $lc_lines[$lc_i] =~ /\A([ \t]*)(\d+)\.[ \t]+(.*)\z/) {
-                $lc_num = $2;
-                $lc_item = $3;
-                $lc_prefix = $lc_num . '. ';
-                push @lc_out, render_list_item($lc_prefix, $lc_item, $lc_width);
+                $lc2_indent = $1;
+                $lc2_num = $2;
+                $lc2_item = $3;
+                $lc2_prefix = $lc2_num . '. ';
+                push @lc_out, render_list_item($lc2_prefix, $lc2_item, $lc_width, $lc2_indent);
                 $lc_i++;
             }
 
@@ -340,11 +344,11 @@ sub render_markdown {
         # Block quotes are rendered immediately rather than accumulated into the
         # paragraph buffer.
         if ($lc_line =~ /\A>[ \t]?(.*)\z/) {
-            my $lc_quote;
+            my $lc2_quote;
 
             flush_para(\@lc_para, \@lc_out, $lc_width);
-            $lc_quote = $1;
-            push @lc_out, render_block_quote($lc_quote, $lc_width);
+            $lc2_quote = $1;
+            push @lc_out, render_block_quote($lc2_quote, $lc_width);
             next;
         }
 
@@ -395,14 +399,18 @@ sub render_list_item {
     my $lc_width;
     my $lc_indent;
     my $lc_rendered;
+    my $lc_base_indent;
 
-    ($lc_prefix, $lc_text, $lc_width) = @_;
+    ($lc_prefix, $lc_text, $lc_width, $lc_base_indent) = @_;
+    
+    # Set the default for $lc_base_indent if it wasn't defined:
+    if ( !(defined($lc_base_indent)) ) { $lc_base_indent = ''; }
 
     # Continuation lines align under the list text, not under the bullet or
     # list number.
-    $lc_indent = ' ' x visible_length($lc_prefix);
+    $lc_indent = $lc_base_indent . (' ' x visible_length($lc_prefix));
     $lc_text = render_inline($lc_text);
-    $lc_rendered = wrap_styled_text($lc_prefix . $lc_text, $lc_width, $lc_indent);
+    $lc_rendered = wrap_styled_text($lc_base_indent . $lc_prefix . $lc_text, $lc_width, $lc_indent, $lc_base_indent);
 
     return $lc_rendered . "\n";
 }
@@ -575,11 +583,13 @@ sub wrap_styled_text {
     my $lc_visible_current;
     my $lc_visible_token;
 
-    ($lc_text, $lc_width, $lc_subsequent_indent) = @_;
+    ($lc_text, $lc_width, $lc_subsequent_indent, $lc_current) = @_;
+
+    if ( !(defined($lc_subsequent_indent)) ) { $lc_subsequent_indent = ''; }
+    if ( !(defined($lc_current)) ) { $lc_current = ''; }
 
     @lc_tokens = split_preserving_ansi_words($lc_text);
     @lc_lines = ();
-    $lc_current = '';
 
     foreach $lc_token (@lc_tokens) {
         if ($lc_token =~ /\A\s+\z/) {
@@ -589,19 +599,19 @@ sub wrap_styled_text {
         $lc_visible_current = visible_length(strip_ansi($lc_current));
         $lc_visible_token   = visible_length(strip_ansi($lc_token));
 
-        if ($lc_current eq '') {
-            $lc_current = $lc_token;
+        if (strip_ansi($lc_current) =~ /\A\s*\z/) {
+            $lc_current .= $lc_token;
         }
         elsif (($lc_visible_current + 1 + $lc_visible_token) <= $lc_width) {
             $lc_current .= ' ' . $lc_token;
         }
         else {
             push @lc_lines, $lc_current;
-            $lc_current = ($lc_subsequent_indent || '') . $lc_token;
+            $lc_current = $lc_subsequent_indent . $lc_token;
         }
     }
 
-    if ($lc_current ne '') {
+    if (strip_ansi($lc_current) !~ /\A\s*\z/) {
         push @lc_lines, $lc_current;
     }
 
