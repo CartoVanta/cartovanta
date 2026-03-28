@@ -20,6 +20,9 @@ use warnings;
 use utf8;
 use open ':std', ':encoding(UTF-8)';
 
+# Some global variables:
+my $will_ditch_first_line = (1>2); # If '--shebang' option suppresses first line.
+
 # Coordinate the overall program flow: read options, load the Markdown file,
 # render it into styled terminal text, and then send the result to either a
 # pager or standard output.
@@ -39,7 +42,7 @@ sub main {
         die usage();
     }
 
-    $lc_raw_md   = slurp_file($lc_file);
+    $lc_raw_md   = slurp_mdcontent($lc_file);
     $lc_rendered = render_markdown($lc_raw_md, $lc_width);
 
     output_text($lc_rendered, $lc_mode);
@@ -68,6 +71,9 @@ sub parse_args {
         }
         elsif ($lc_arg eq '--no-pager') {
             $$lc_mode_ref = 'stdout';
+        }
+        elsif ($lc_arg eq '--shebang') {
+            $will_ditch_first_line = (2>1);
         }
         elsif ($lc_arg =~ /\A--width=(\d+)\z/) {
             $$lc_width_ref = $1;
@@ -115,9 +121,48 @@ Options:
 END_USAGE
 }
 
+# Slurps a file, and ditches the first line if the '--shebang'
+# option is in effect.
+sub slurp_mdcontent {
+  my $lc_rawcont; # Raw file content
+  my $lc_reto; # File content that will be returned
+  my $lc_shebang; # Stripped shebang
+  
+  $lc_rawcont = slurp_file($_[0]);
+  $lc_reto = $lc_rawcont;
+  if ( $will_ditch_first_line )
+  {
+    ($lc_shebang,$lc_reto) = split(/\n/,$lc_rawcont,2);
+    if (!(defined($lc_reto))) { $lc_reto = ''; }
+  }
+  return $lc_reto;
+}
+
 # Read the entire input file as UTF-8 text and normalize line endings to \n so
 # the renderer can process the content consistently across platforms.
 sub slurp_file {
+    my $lc_content; # The full text read from stdin
+
+    if ($_[0] ne '-') {
+        return slurp_file_from_disk($_[0]);
+    }
+
+    local $/;
+    $lc_content = <STDIN>;
+
+    if (!defined $lc_content) {
+        $lc_content = '';
+    }
+
+    $lc_content =~ s/\r\n/\n/g;
+    $lc_content =~ s/\r/\n/g;
+
+    return $lc_content;
+}
+
+# Helpfile for slurp_file() that is used if the file is on disk
+# (as opposed to '-').
+sub slurp_file_from_disk {
     my $lc_file;
     my $lc_fh;
     my $lc_content;
