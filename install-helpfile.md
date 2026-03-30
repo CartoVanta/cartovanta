@@ -24,6 +24,14 @@ If `--systemwide` is specified, the installer uses systemwide installation behav
 
 Any pathname supplied for an option must be absolute unless that option explicitly says otherwise.
 
+## Known Dependencies.
+
+This package needs `perl` -- as its core, its installers (including glue code), and several subcommands are written in `perl`.
+
+This package needs `swift` for the `textdeck` subcommand (though it is unknown if that subcommand will work outside the Mac environment anyway).
+
+This package requires ImageMagick as a number of subcommands, some directly some indirectly, make use of it.
+
 ## Notes
 
 If `--systemwide` is used, the installer must be run with effective root privileges.
