@@ -155,18 +155,40 @@ sub found_in_path {
 
 # Go ahead and install the thing
 {
-  my $lc_ds;
+  my $lc_ds; # Destination of main command
+  my $lc_eds; # Destination of helpfile displayer
   my $lc_cm;
+  
   $lc_ds = ($bindest . '/cartovanta');
+  $lc_eds = $lc_ds . '-help';
+  
   system('mkdir','-p',$bindest);
+  system('rm','-rf',$lc_ds,$lc_eds); # Remove old stuff
+  
+  # Make sure there is nothing so weird as directories where
+  # the executables need to go.
   if ( -d $lc_ds )
   {
     die("\nFATAL ERROR:\n  Why is a directory present at this location?\n  " . $lc_ds . "\n\n");
   }
-  #system('cp','cartovanta.pl',$lc_ds);
+  if ( -d $lc_eds )
+  {
+    die("\nFATAL ERROR:\n  Why is a directory present at this location?\n  " . $lc_eds . "\n\n");
+  }
+  
+  # NOW FOR THE INSTALLATIONS
+  # First the main cartovanta
   $lc_cm = 'cat cartovanta.pl > ' . &shell_quote($lc_ds);
   system($lc_cm);
   system('chmod','755',$lc_ds);
+  
+  # And then the help displayer
+  $lc_cm = "echo '" . '#!/usr/bin/env cartovanta mdview --shebang' . "' > ";
+  $lc_cm .= &shell_quote($lc_eds);
+  system($lc_cm);
+  $lc_cm = 'cat cartovanta-help.md >> ' . &shell_quote($lc_eds);
+  system($lc_cm);
+  system('chmod','755',$lc_eds);
 }
 
 
