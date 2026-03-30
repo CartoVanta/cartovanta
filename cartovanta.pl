@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use strict;
+use warnings;
+use File::Basename qw(dirname);
+use Cwd 'abs_path';
 
 my @arguma; # Environments to pass to the subcommand
 my $subcm; # Subcommand to search for
@@ -37,6 +40,13 @@ if ( $counto < 0.5 )
 $subcn = shift(@arguma);
 $subcm = $subcn . '-exe';
 $numbarg = @arguma;
+
+# Show the -helpfile- if needed
+if ( $subcn eq '--help' )
+{
+  exec((dirname($0) . '/cartovanta-help'));
+  die "\nFailed to display helpfile for 'cartovanta'.\n\n";
+}
 
 # Put together the value for $pathvar
 $pathvar = $ENV{'CARTOVANTA_PATH'};
