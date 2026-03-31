@@ -210,6 +210,7 @@ sub install_each {
 &install_each('mdview');
 &install_each('subc-install');
 &install_each('textdeck');
+&install_each('txtdeck');
 &install_each('cp-w-border');
 
 
