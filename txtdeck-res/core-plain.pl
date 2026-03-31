@@ -442,8 +442,17 @@ sub register_lfsizep
 
 
 # Parse command-line options into the global %opt hash.
+# Parse command-line options into the global %opt hash.
 sub parse_options
 {
+    my @lc_lfont_raw;      # Raw [line, font-path] pairs collected from --lfont.
+    my @lc_lfsize_raw;     # Raw [line, size] pairs collected from --lfsize.
+    my @lc_lfsizep_raw;    # Raw [line, percent] pairs collected from --lfsizep.
+    my $lc_line_no;        # One explicit line number while dispatching paired option data.
+    my $lc_font_path;      # One font-file path while dispatching --lfont data.
+    my $lc_font_size;      # One absolute font size while dispatching --lfsize data.
+    my $lc_percent_size;   # One percentage size while dispatching --lfsizep data.
+
     $opt{'version'} = default_version_string();
     $opt{'line_overrides'} = {};
 
@@ -457,19 +466,46 @@ sub parse_options
         'deck-name=s',
         'version=s',
         'height=i',
-        'lfont=s{2}' => sub {
-            my ($lc_name, @lc_values) = @_;    # Callback name and the two option arguments.
-            register_lfont($lc_values[0], $lc_values[1]);
-        },
-        'lfsize=s{2}' => sub {
-            my ($lc_name, @lc_values) = @_;    # Callback name and the two option arguments.
-            register_lfsize($lc_values[0], $lc_values[1]);
-        },
-        'lfsizep=s{2}' => sub {
-            my ($lc_name, @lc_values) = @_;    # Callback name and the two option arguments.
-            register_lfsizep($lc_values[0], $lc_values[1]);
-        },
+        'lfont=s{2}' => \@lc_lfont_raw,
+        'lfsize=s{2}' => \@lc_lfsize_raw,
+        'lfsizep=s{2}' => \@lc_lfsizep_raw,
     ) or fail('Invalid option syntax.');
+
+    if ( @lc_lfont_raw % 2 )
+    {
+        fail('Internal parsing error for --lfont.');
+    }
+
+    while ( @lc_lfont_raw )
+    {
+        $lc_line_no = shift(@lc_lfont_raw);
+        $lc_font_path = shift(@lc_lfont_raw);
+        register_lfont($lc_line_no, $lc_font_path);
+    }
+
+    if ( @lc_lfsize_raw % 2 )
+    {
+        fail('Internal parsing error for --lfsize.');
+    }
+
+    while ( @lc_lfsize_raw )
+    {
+        $lc_line_no = shift(@lc_lfsize_raw);
+        $lc_font_size = shift(@lc_lfsize_raw);
+        register_lfsize($lc_line_no, $lc_font_size);
+    }
+
+    if ( @lc_lfsizep_raw % 2 )
+    {
+        fail('Internal parsing error for --lfsizep.');
+    }
+
+    while ( @lc_lfsizep_raw )
+    {
+        $lc_line_no = shift(@lc_lfsizep_raw);
+        $lc_percent_size = shift(@lc_lfsizep_raw);
+        register_lfsizep($lc_line_no, $lc_percent_size);
+    }
 
     if ( @ARGV != 4 )
     {
@@ -565,31 +601,39 @@ sub build_styled_paragraphs
 }
 
 
-# Render one styled paragraph into a temporary transparent PNG.
-sub render_paragraph_image
+# Render one single line into a temporary transparent PNG.
+sub render_single_line_image
 {
-    my ($lc_output_path, $lc_paragraph_ref, $lc_text_width, $lc_text_height) = @_;    # Output path, paragraph data, and text-box bounds.
+    my ($lc_output_path, $lc_text, $lc_font_path, $lc_pointsize) = @_;    # Output path, literal line text, font file path, and point size.
 
-    my $lc_magick;        # ImageMagick executable path.
-    my $lc_pointsize;     # Point size used to render this paragraph.
-    my $lc_temp_fh;       # Filehandle for the temporary paragraph text file.
-    my $lc_temp_path;     # Temporary text file path for ImageMagick caption input.
+    my $lc_magick;       # ImageMagick executable path.
+    my $lc_temp_fh;      # Filehandle for the temporary text file.
+    my $lc_temp_path;    # Temporary text file path for ImageMagick input.
 
     $lc_magick = find_magick();
-    $lc_pointsize = int( ($lc_paragraph_ref->{'base_font_size'}) + 0.5 );
-    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-paragraph-XXXXXX', TMPDIR => 1, UNLINK => 0);
-    print {$lc_temp_fh} $lc_paragraph_ref->{'text'};
+
+    if ( $lc_text eq '' )
+    {
+        run_cmd_or_die(
+            $lc_magick,
+            '-size', '1x1',
+            'xc:none',
+            $lc_output_path,
+        );
+        return;
+    }
+
+    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-line-XXXXXX', TMPDIR => 1, UNLINK => 0);
+    print {$lc_temp_fh} $lc_text;
     close($lc_temp_fh);
 
     run_cmd_or_die(
         $lc_magick,
         '-background', 'none',
         '-fill', 'black',
-        '-font', $lc_paragraph_ref->{'font_path'},
-        '-gravity', 'center',
-        '-size', "${lc_text_width}x${lc_text_height}",
-        '-pointsize', $lc_pointsize,
-        'caption:@' . $lc_temp_path,
+        '-font', $lc_font_path,
+        '-pointsize', int($lc_pointsize + 0.5),
+        'label:@' . $lc_temp_path,
         '-trim',
         '+repage',
         $lc_output_path,
@@ -599,31 +643,260 @@ sub render_paragraph_image
 }
 
 
+# Measure the natural width and height of one single rendered line.
+sub measure_single_line
+{
+    my ($lc_text, $lc_font_path, $lc_pointsize) = @_;    # Literal line text, font file path, and point size.
+
+    my $lc_temp_fh;      # Filehandle used only to reserve a temporary image pathname.
+    my $lc_temp_path;    # Temporary rendered image path.
+    my $lc_width;        # Measured rendered width.
+    my $lc_height;       # Measured rendered height.
+
+    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-line-measure-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    close($lc_temp_fh);
+
+    render_single_line_image($lc_temp_path, $lc_text, $lc_font_path, $lc_pointsize);
+    ($lc_width, $lc_height) = infer_image_size($lc_temp_path);
+    unlink($lc_temp_path);
+
+    return ($lc_width, $lc_height);
+}
+
+
+# Measure the nominal line height for a font at a given point size.
+sub measure_line_height
+{
+    my ($lc_font_path, $lc_pointsize) = @_;    # Font file path and point size.
+
+    my $lc_width;      # Width of the sample text image.
+    my $lc_height;     # Height of the sample text image.
+
+    ($lc_width, $lc_height) = measure_single_line('Mg', $lc_font_path, $lc_pointsize);
+
+    if ( $lc_height < 1 )
+    {
+        $lc_height = 1;
+    }
+
+    return $lc_height;
+}
+
+
+# Wrap one explicit paragraph into rendered lines without splitting words.
+sub wrap_paragraph_lines
+{
+    my ($lc_paragraph_ref, $lc_pointsize, $lc_text_width) = @_;    # Paragraph data, point size, and preferred text width.
+
+    my @lc_words;           # Words from the paragraph text.
+    my @lc_lines;           # Wrapped lines that avoid splitting words.
+    my $lc_current;         # Current line under construction.
+    my $lc_word;            # One word while building wrapped lines.
+    my $lc_candidate;       # Candidate line formed by adding one more word.
+    my $lc_candidate_width; # Width of the candidate rendered line.
+    my $lc_candidate_height;# Height of the candidate rendered line.
+
+    if ( $lc_paragraph_ref->{'text'} eq '' )
+    {
+        return ('');
+    }
+
+    @lc_words = split(/\s+/, $lc_paragraph_ref->{'text'});
+    @lc_lines = ();
+    $lc_current = '';
+
+    foreach $lc_word (@lc_words)
+    {
+        if ( $lc_current eq '' )
+        {
+            $lc_current = $lc_word;
+            next;
+        }
+
+        $lc_candidate = $lc_current . ' ' . $lc_word;
+        ($lc_candidate_width, $lc_candidate_height) = measure_single_line($lc_candidate, $lc_paragraph_ref->{'font_path'}, $lc_pointsize);
+
+        if ( $lc_candidate_width <= $lc_text_width )
+        {
+            $lc_current = $lc_candidate;
+        }
+        else
+        {
+            push(@lc_lines, $lc_current);
+            $lc_current = $lc_word;
+        }
+    }
+
+    if ( $lc_current ne '' )
+    {
+        push(@lc_lines, $lc_current);
+    }
+
+    return @lc_lines;
+}
+
+
+# Build the unscaled content-image layout for one card.
+sub build_card_content_layout
+{
+    my ($lc_styled_ref, $lc_temp_dir, $lc_text_width) = @_;    # Paragraph definitions, temp directory, and preferred text width.
+
+    my @lc_items;              # Rendered line items in final draw order.
+    my $lc_total_height;       # Total content height for this card before shrinkage.
+    my $lc_content_width;      # Maximum rendered line width across the whole card.
+    my $lc_index;              # Paragraph index while building the layout.
+    my $lc_pointsize;          # Base point size for one paragraph.
+    my $lc_line_height;        # Nominal line height for one paragraph.
+    my $lc_regular_gap;        # Gap inserted between wrapped lines of the same paragraph.
+    my $lc_paragraph_gap;      # Gap inserted after a paragraph.
+    my @lc_lines;              # Wrapped lines for one paragraph.
+    my $lc_line_index;         # Wrapped-line index within one paragraph.
+    my $lc_line_text;          # One wrapped line.
+    my $lc_line_path;          # Temporary image path for one rendered line.
+    my $lc_line_width;         # Width of one rendered line image.
+    my $lc_line_image_height;  # Height of one rendered line image.
+
+    @lc_items = ();
+    $lc_total_height = 0;
+    $lc_content_width = 0;
+
+    for ( $lc_index = 0 ; $lc_index <= $#$lc_styled_ref ; $lc_index += 1 )
+    {
+        $lc_pointsize = $lc_styled_ref->[$lc_index]->{'base_font_size'};
+        $lc_line_height = measure_line_height($lc_styled_ref->[$lc_index]->{'font_path'}, $lc_pointsize);
+        $lc_regular_gap = int( (($lc_line_height * 0.15)) + 0.5 );
+        $lc_paragraph_gap = int( (($lc_line_height * 0.45)) + 0.5 );
+        @lc_lines = wrap_paragraph_lines($lc_styled_ref->[$lc_index], $lc_pointsize, $lc_text_width);
+
+        for ( $lc_line_index = 0 ; $lc_line_index <= $#lc_lines ; $lc_line_index += 1 )
+        {
+            $lc_line_text = $lc_lines[$lc_line_index];
+            $lc_line_path = File::Spec->catfile($lc_temp_dir, 'line-' . $lc_index . '-' . $lc_line_index . '.png');
+            render_single_line_image($lc_line_path, $lc_line_text, $lc_styled_ref->[$lc_index]->{'font_path'}, $lc_pointsize);
+            ($lc_line_width, $lc_line_image_height) = infer_image_size($lc_line_path);
+
+            if ( $lc_line_width > $lc_content_width )
+            {
+                $lc_content_width = $lc_line_width;
+            }
+
+            push(
+                @lc_items,
+                {
+                    'path' => $lc_line_path,
+                    'width' => $lc_line_width,
+                    'image_height' => $lc_line_image_height,
+                    'line_height' => $lc_line_height,
+                    'gap_after' => 0,
+                }
+            );
+
+            $lc_total_height += $lc_line_height;
+
+            if ( $lc_line_index < $#lc_lines )
+            {
+                $lc_items[$#lc_items]->{'gap_after'} = $lc_regular_gap;
+                $lc_total_height += $lc_regular_gap;
+            }
+        }
+
+        if ( $lc_index < $#$lc_styled_ref )
+        {
+            $lc_items[$#lc_items]->{'gap_after'} = $lc_paragraph_gap;
+            $lc_total_height += $lc_paragraph_gap;
+        }
+    }
+
+    return ($lc_content_width, $lc_total_height, \@lc_items);
+}
+
+
+# Verify that the final rendered card image stays inside the intended margins.
+sub final_card_fits
+{
+    my ($lc_card_path, $lc_width, $lc_height, $lc_hmargin, $lc_vmargin) = @_;    # Final card path, card dimensions, and intended margins.
+
+    my $lc_magick;         # ImageMagick executable path.
+    my $lc_bbox_text;      # Bounding-box text returned by ImageMagick trim formatting.
+    my $lc_bbox_width;     # Non-white bounding-box width.
+    my $lc_bbox_height;    # Non-white bounding-box height.
+    my $lc_bbox_x;         # Non-white bounding-box left offset.
+    my $lc_bbox_y;         # Non-white bounding-box top offset.
+
+    $lc_magick = find_magick();
+    $lc_bbox_text = qx{$lc_magick "$lc_card_path" -trim -format "%wx%h%O" info: 2>/dev/null};
+    chomp($lc_bbox_text);
+
+    if ( $lc_bbox_text !~ /\A(\d+)x(\d+)\+(\d+)\+(\d+)\z/ )
+    {
+        return 0;
+    }
+
+    $lc_bbox_width = int($1);
+    $lc_bbox_height = int($2);
+    $lc_bbox_x = int($3);
+    $lc_bbox_y = int($4);
+
+    if ( $lc_bbox_x < $lc_hmargin )
+    {
+        return 0;
+    }
+
+    if ( $lc_bbox_y < $lc_vmargin )
+    {
+        return 0;
+    }
+
+    if ( ($lc_bbox_x + $lc_bbox_width) > ($lc_width - $lc_hmargin) )
+    {
+        return 0;
+    }
+
+    if ( ($lc_bbox_y + $lc_bbox_height) > ($lc_height - $lc_vmargin) )
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+
 # Render one card face as a PNG using ImageMagick.
-#
-# This version now renders each explicit paragraph separately so that
-# per-line font-path and font-size overrides actually affect output.
+# This version renders each card independently, preserves proportional
+# font relationships within that card, wraps only at word boundaries,
+# and shrinks that card's fully laid-out content image until the final
+# rendered card fits inside the intended margins.
 sub render_card_face
 {
     my ($lc_output_path, $lc_card_name, $lc_width, $lc_height) = @_;    # Output path, card text, and generated dimensions.
 
-    my $lc_magick;            # ImageMagick executable path.
-    my $lc_hmargin;           # Left/right text margin in pixels.
-    my $lc_vmargin;           # Top/bottom text margin in pixels.
-    my $lc_text_width;        # Width of the usable text box.
-    my $lc_text_height;       # Height of the usable text box.
-    my @lc_styled;            # Styled paragraphs used to build the card.
-    my $lc_temp_dir;          # Temporary directory that holds rendered paragraph images.
-    my @lc_para_paths;        # Paragraph-image paths in render order.
-    my @lc_para_heights;      # Heights of rendered paragraph images.
-    my $lc_index;             # Paragraph index while rendering and measuring.
-    my $lc_para_path;         # Temporary image path for one rendered paragraph.
-    my $lc_para_width;        # Width of one rendered paragraph image.
-    my $lc_para_height;       # Height of one rendered paragraph image.
-    my $lc_gap_height;        # Vertical gap inserted between explicit paragraphs.
-    my $lc_total_height;      # Total rendered paragraph height plus gaps.
-    my $lc_offset_y;          # Top offset used to vertically center the text block.
-    my @lc_cmd;               # Final ImageMagick command used to composite the card.
+    my $lc_magick;               # ImageMagick executable path.
+    my $lc_hmargin;              # Left/right text margin in pixels.
+    my $lc_vmargin;              # Top/bottom text margin in pixels.
+    my $lc_text_width;           # Width of the usable text box.
+    my $lc_text_height;          # Height of the usable text box.
+    my @lc_styled;               # Styled paragraphs used to build the card.
+    my $lc_temp_dir;             # Temporary directory that holds rendered line images.
+    my $lc_content_width;        # Width of the unscaled content image.
+    my $lc_content_height;       # Height of the unscaled content image.
+    my $lc_items_ref;            # Rendered line items for the unscaled content image.
+    my $lc_content_fh;           # Filehandle used only to reserve a content-image pathname.
+    my $lc_content_path;         # Temporary unscaled content-image path.
+    my $lc_scaled_content_fh;    # Filehandle used only to reserve a scaled-content pathname.
+    my $lc_scaled_content_path;  # Temporary scaled-content path.
+    my $lc_try_card_fh;          # Filehandle used only to reserve a temporary card pathname.
+    my $lc_try_card_path;        # Temporary final-card path.
+    my $lc_scale;                # Uniform scale factor applied to the whole content image for this card only.
+    my $lc_scaled_width;         # Width of the scaled content image.
+    my $lc_scaled_height;        # Height of the scaled content image.
+    my @lc_cmd;                  # ImageMagick command used to composite a temporary image.
+    my $lc_cursor_y;             # Running vertical position while building the unscaled content image.
+    my $lc_item_ref;             # One rendered line item while compositing the content image.
+    my $lc_item_x;               # Left offset used to horizontally center one line image.
+    my $lc_item_y;               # Top offset used to vertically place one line image in its line box.
+    my $lc_index;                # Line-item index while compositing images.
+    my $lc_card_x;               # Left offset used to center the scaled content image on the card.
+    my $lc_card_y;               # Top offset used to center the scaled content image on the card.
 
     $lc_magick = find_magick();
     $lc_hmargin = defined($opt{'hmargin'}) ? $opt{'hmargin'} : int( ($lc_width * 0.10) + 0.5 );
@@ -649,62 +922,127 @@ sub render_card_face
 
     @lc_styled = build_styled_paragraphs($lc_card_name, $lc_height);
     $lc_temp_dir = File::Temp::tempdir('cartovanta-card-XXXXXX', TMPDIR => 1, CLEANUP => 1);
-    @lc_para_paths = ();
-    @lc_para_heights = ();
-    $lc_total_height = 0;
+    ($lc_content_fh, $lc_content_path) = tempfile('cartovanta-card-content-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    close($lc_content_fh);
+    ($lc_scaled_content_fh, $lc_scaled_content_path) = tempfile('cartovanta-card-scaled-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    close($lc_scaled_content_fh);
+    ($lc_try_card_fh, $lc_try_card_path) = tempfile('cartovanta-card-output-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    close($lc_try_card_fh);
 
-    for ( $lc_index = 0 ; $lc_index <= $#lc_styled ; $lc_index += 1 )
-    {
-        $lc_para_path = File::Spec->catfile($lc_temp_dir, 'paragraph-' . $lc_index . '.png');
-        render_paragraph_image($lc_para_path, $lc_styled[$lc_index], $lc_text_width, $lc_text_height);
-        ($lc_para_width, $lc_para_height) = infer_image_size($lc_para_path);
-        push(@lc_para_paths, $lc_para_path);
-        push(@lc_para_heights, $lc_para_height);
-        $lc_total_height += $lc_para_height;
-    }
+    ($lc_content_width, $lc_content_height, $lc_items_ref) = build_card_content_layout(\@lc_styled, $lc_temp_dir, $lc_text_width);
 
-    if ( @lc_styled > 1 )
+    if ( ($lc_content_width <= 0) || ($lc_content_height <= 0) )
     {
-        $lc_gap_height = int( (($lc_styled[0]->{'base_font_size'}) * 0.45) + 0.5 );
-        $lc_total_height += ( $lc_gap_height * $#lc_styled );
-    }
-    else
-    {
-        $lc_gap_height = 0;
-    }
-
-    if ( $lc_total_height > $lc_text_height )
-    {
+        unlink($lc_content_path);
+        unlink($lc_scaled_content_path);
+        unlink($lc_try_card_path);
         fail("Unable to fit text inside card bounds for card name '$lc_card_name'.");
     }
 
-    $lc_offset_y = $lc_vmargin + int( (($lc_text_height - $lc_total_height) / 2) + 0.5 );
     @lc_cmd = (
         $lc_magick,
-        '-size', "${lc_width}x${lc_height}",
-        'xc:white',
+        '-size', "${lc_content_width}x${lc_content_height}",
+        'xc:none',
     );
 
-    for ( $lc_index = 0 ; $lc_index <= $#lc_para_paths ; $lc_index += 1 )
+    $lc_cursor_y = 0;
+
+    for ( $lc_index = 0 ; $lc_index <= $#$lc_items_ref ; $lc_index += 1 )
     {
+        $lc_item_ref = $lc_items_ref->[$lc_index];
+        $lc_item_x = int( (($lc_content_width - $lc_item_ref->{'width'}) / 2) + 0.5 );
+        $lc_item_y = $lc_cursor_y + int( (($lc_item_ref->{'line_height'} - $lc_item_ref->{'image_height'}) / 2) + 0.5 );
+
         push(
             @lc_cmd,
-            $lc_para_paths[$lc_index],
-            '-gravity', 'north',
-            '-geometry', '+0+' . $lc_offset_y,
+            $lc_item_ref->{'path'},
+            '-gravity', 'northwest',
+            '-geometry', '+' . $lc_item_x . '+' . $lc_item_y,
             '-composite',
         );
 
-        $lc_offset_y += $lc_para_heights[$lc_index];
+        $lc_cursor_y += $lc_item_ref->{'line_height'};
 
-        if ( $lc_index < $#lc_para_paths )
+        if ( defined($lc_item_ref->{'gap_after'}) && ($lc_item_ref->{'gap_after'} > 0) )
         {
-            $lc_offset_y += $lc_gap_height;
+            $lc_cursor_y += $lc_item_ref->{'gap_after'};
         }
     }
 
-    push(@lc_cmd, $lc_output_path);
+    push(@lc_cmd, $lc_content_path);
     run_cmd_or_die(@lc_cmd);
+
+    $lc_scale = 1.0;
+
+    if ( $lc_content_width > $lc_text_width )
+    {
+        $lc_scale = ( $lc_text_width / $lc_content_width );
+    }
+
+    if ( ($lc_content_height * $lc_scale) > $lc_text_height )
+    {
+        $lc_scale = ( $lc_text_height / $lc_content_height );
+    }
+
+    if ( $lc_scale > 1.0 )
+    {
+        $lc_scale = 1.0;
+    }
+
+    if ( $lc_scale <= 0 )
+    {
+        unlink($lc_content_path);
+        unlink($lc_scaled_content_path);
+        unlink($lc_try_card_path);
+        fail("Unable to fit text inside card bounds for card name '$lc_card_name'.");
+    }
+
+    $lc_scaled_width = int( (($lc_content_width * $lc_scale)) + 0.5 );
+    $lc_scaled_height = int( (($lc_content_height * $lc_scale)) + 0.5 );
+
+    if ( $lc_scaled_width < 1 )
+    {
+        $lc_scaled_width = 1;
+    }
+
+    if ( $lc_scaled_height < 1 )
+    {
+        $lc_scaled_height = 1;
+    }
+
+    run_cmd_or_die(
+        $lc_magick,
+        $lc_content_path,
+        '-resize', "${lc_scaled_width}x${lc_scaled_height}!",
+        $lc_scaled_content_path,
+    );
+
+    $lc_card_x = $lc_hmargin + int( (($lc_text_width - $lc_scaled_width) / 2) + 0.5 );
+    $lc_card_y = $lc_vmargin + int( (($lc_text_height - $lc_scaled_height) / 2) + 0.5 );
+
+    run_cmd_or_die(
+        $lc_magick,
+        '-size', "${lc_width}x${lc_height}",
+        'xc:white',
+        $lc_scaled_content_path,
+        '-gravity', 'northwest',
+        '-geometry', '+' . $lc_card_x . '+' . $lc_card_y,
+        '-composite',
+        $lc_try_card_path,
+    );
+
+    if ( !final_card_fits($lc_try_card_path, $lc_width, $lc_height, $lc_hmargin, $lc_vmargin) )
+    {
+        unlink($lc_content_path);
+        unlink($lc_scaled_content_path);
+        unlink($lc_try_card_path);
+        fail("Unable to fit text inside card bounds for card name '$lc_card_name'.");
+    }
+
+    copy($lc_try_card_path, $lc_output_path) or fail("Could not copy final rendered card to '$lc_output_path'.");
+    unlink($lc_content_path);
+    unlink($lc_scaled_content_path);
+    unlink($lc_try_card_path);
 }
 
 
