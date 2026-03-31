@@ -50,6 +50,7 @@ if ( $subcn eq '--help' )
 
 # Put together the value for $pathvar
 $pathvar = $ENV{'CARTOVANTA_PATH'};
+if ( !(defined($pathvar)) ) { $pathvar = ''; }
 if ( $pathvar ne '' ) { $pathvar .= ':'; }
 $pathvar .= $ENV{'HOME'} . '/local/cartovanta-bin';
 $pathvar .= ':/usr/local/cartovanta-bin';
