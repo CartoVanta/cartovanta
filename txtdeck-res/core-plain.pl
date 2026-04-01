@@ -43,9 +43,9 @@ use Getopt::Long qw(GetOptions);
 use JSON::PP;
 use File::Basename qw(fileparse);
 use File::Copy qw(copy);
-use File::Path qw(make_path);
+use File::Path qw(make_path remove_tree);
 use File::Spec;
-use File::Temp qw(tempfile);
+use File::Temp qw(tempfile tempdir);
 use IPC::Open3;
 use POSIX qw(strftime);
 use Symbol qw(gensym);
@@ -623,7 +623,7 @@ sub render_single_line_image
         return;
     }
 
-    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-line-XXXXXX', TMPDIR => 1, UNLINK => 0);
+    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-line-XXXXXX', DIR => $opt{'deck_tmp_dir'}, UNLINK => 0);
     print {$lc_temp_fh} $lc_text;
     close($lc_temp_fh);
 
@@ -653,7 +653,7 @@ sub measure_single_line
     my $lc_width;        # Measured rendered width.
     my $lc_height;       # Measured rendered height.
 
-    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-line-measure-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    ($lc_temp_fh, $lc_temp_path) = tempfile('cartovanta-line-measure-XXXXXX', DIR => $opt{'deck_tmp_dir'}, SUFFIX => '.png', UNLINK => 0);
     close($lc_temp_fh);
 
     render_single_line_image($lc_temp_path, $lc_text, $lc_font_path, $lc_pointsize);
@@ -921,12 +921,12 @@ sub render_card_face
     }
 
     @lc_styled = build_styled_paragraphs($lc_card_name, $lc_height);
-    $lc_temp_dir = File::Temp::tempdir('cartovanta-card-XXXXXX', TMPDIR => 1, CLEANUP => 1);
-    ($lc_content_fh, $lc_content_path) = tempfile('cartovanta-card-content-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    $lc_temp_dir = File::Temp::tempdir('cartovanta-card-XXXXXX', DIR => $opt{'deck_tmp_dir'}, CLEANUP => 1);
+    ($lc_content_fh, $lc_content_path) = tempfile('cartovanta-card-content-XXXXXX', DIR => $opt{'deck_tmp_dir'}, SUFFIX => '.png', UNLINK => 0);
     close($lc_content_fh);
-    ($lc_scaled_content_fh, $lc_scaled_content_path) = tempfile('cartovanta-card-scaled-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    ($lc_scaled_content_fh, $lc_scaled_content_path) = tempfile('cartovanta-card-scaled-XXXXXX', DIR => $opt{'deck_tmp_dir'}, SUFFIX => '.png', UNLINK => 0);
     close($lc_scaled_content_fh);
-    ($lc_try_card_fh, $lc_try_card_path) = tempfile('cartovanta-card-output-XXXXXX', TMPDIR => 1, SUFFIX => '.png', UNLINK => 0);
+    ($lc_try_card_fh, $lc_try_card_path) = tempfile('cartovanta-card-output-XXXXXX', DIR => $opt{'deck_tmp_dir'}, SUFFIX => '.png', UNLINK => 0);
     close($lc_try_card_fh);
 
     ($lc_content_width, $lc_content_height, $lc_items_ref) = build_card_content_layout(\@lc_styled, $lc_temp_dir, $lc_text_width);
@@ -1110,6 +1110,8 @@ sub create_output_structure
     }
 
     make_path($lc_output_dir);
+    $opt{'deck_tmp_dir'} = File::Spec->catdir($lc_output_dir, 'tmp');
+    make_path($opt{'deck_tmp_dir'});
     $lc_imagia_dir = File::Spec->catdir($lc_output_dir, 'imagia');
     make_path($lc_imagia_dir);
 
@@ -1180,6 +1182,10 @@ sub create_output_structure
     open($lc_meta_fh, '>', File::Spec->catfile($lc_output_dir, 'meta.json')) or fail('Could not create meta.json.');
     print {$lc_meta_fh} $lc_json->encode($lc_meta_data);
     close($lc_meta_fh);
+    if ( -d $opt{'deck_tmp_dir'} )
+    {
+        remove_tree($opt{'deck_tmp_dir'});
+    }
 }
 
 
