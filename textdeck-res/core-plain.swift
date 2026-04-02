@@ -872,6 +872,20 @@ Default font: \(options.defaultFontName)
 }
 
 do {
+
+// HERE BEGINS THE DEPRECATION WARNING
+FileHandle.standardError.write(Data("""
+
+NOTE: cartovanta textdeck is deprecated and will be phased out.
+Please migrate to cartovanta txtdeck.
+To learn more about cartovanta txtdeck, type:
+    cartovanta txtdeck --help
+
+
+""".utf8))
+sleep(4)
+// HERE ENDS THE DEPRECATION WARNING
+
     let rawArgs = Array(CommandLine.arguments.dropFirst())
     if let options = try parseArguments(rawArgs) {
         let cards = try parseNamesFile(at: options.inputFilePath)
