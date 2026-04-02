@@ -1,3 +1,12 @@
+## STATUS
+
+**This tool is DEPRECATED. Do not use it.**
+
+The new tool for generating decks of cards from text files is `cartovanta txtdeck` -- and eventually, it will reach a point that you won't EVEN MISS this tool anymore. For information how to use it, run:
+```
+cartovanta txtdeck --help
+```
+
 ## Usage
 
 `deckgen.swift [back-image] [input-file] [output-directory] [options]`
