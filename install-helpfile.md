@@ -28,9 +28,10 @@ Any pathname supplied for an option must be absolute unless that option explicit
 
 This package needs `perl` -- as its core, its installers (including glue code), and several subcommands are written in `perl`.
 
-This package needs `swift` for the `textdeck` subcommand (though it is unknown if that subcommand will work outside the Mac environment anyway).
-
 This package requires ImageMagick as a number of subcommands, some directly some indirectly, make use of it.
+
+This package _temporarily_ needs `swift` for the `textdeck` subcommand -
+though that subcommand has been deprecated and probably won't work outside the Mac environment anyway. As a matter of fact, there are plans for `cartovanta` to eventually discontinue _altogether_ support for subcommands written in `swift`. Eventually, `cartovanta` will be made _completely_ independent of `swift`.
 
 ## Notes
 
