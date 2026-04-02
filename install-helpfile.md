@@ -31,7 +31,7 @@ This package needs `perl` -- as its core, its installers (including glue code), 
 This package requires ImageMagick as a number of subcommands, some directly some indirectly, make use of it.
 
 This package _temporarily_ needs `swift` for the `textdeck` subcommand -
-though that subcommand has been deprecated and probably won't work outside the Mac environment anyway. As a matter of fact, there are plans for `cartovanta` to eventually discontinue _altogether_ support for subcommands written in `swift`. Eventually, `cartovanta` will be made _completely_ independent of `swift`.
+though that subcommand has been deprecated and probably won't work outside the Mac environment anyway. So really, you won't need `swift` unless you want to support a deprecated subcommand that only works on one platform anyway.
 
 ## Notes
 
