@@ -975,6 +975,10 @@ sub render_card_face
         }
     
         $lc_scale *= 0.95;
+        if ( $opt{'loud'} )
+        {
+          print("  Scale down to: " . $lc_scale . ":\n");
+        }
     }
     
     if ( !($lc_got_the_shrink) )
