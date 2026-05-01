@@ -18,6 +18,7 @@
 
 use strict;
 use warnings;
+use Data::Dumper;
 
 # cartovanta textdeck-style generator in Perl
 #
@@ -487,6 +488,7 @@ sub parse_options
         'deck-name=s',
         'version=s',
         'height=i',
+        'loud',
         'lfont=s{2}' => \@lc_lfont_raw,
         'lfsize=s{2}' => \@lc_lfsize_raw,
         'lfsizep=s{2}' => \@lc_lfsizep_raw,
@@ -1177,6 +1179,15 @@ sub create_output_structure
         $lc_front_name = 'card-' . $lc_number_string . '.png';
         $lc_front_path = File::Spec->catfile($lc_imagia_dir, $lc_front_name);
 
+        if ( $opt{'loud'} )
+        {
+            my $lc3_crraw;
+            my $lc3_crlit;
+            
+            $lc3_crraw = $lc_cards[$lc_index];
+            $lc3_crlit = perl_string_literal($lc3_crraw);
+            print('Rendering ' . $lc_front_name . ': ' . $lc3_crlit . "\n");
+        }
         render_card_face(
             $lc_front_path,
             $lc_cards[$lc_index],
@@ -1232,6 +1243,22 @@ sub create_output_structure
     {
         remove_tree($opt{'deck_tmp_dir'});
     }
+}
+
+sub perl_string_literal
+{
+    my ($lc_string) = @_;    # String to convert into Perl source-code form.
+
+    my $lc_out;             # Perl source-code representation of the string.
+
+    $lc_out = Data::Dumper->new([$lc_string])
+        ->Terse(1)
+        ->Indent(0)
+        ->Useqq(1)
+        ->Dump();
+
+    chomp($lc_out);
+    return $lc_out;
 }
 
 
