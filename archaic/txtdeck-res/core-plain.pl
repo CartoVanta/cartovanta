@@ -64,6 +64,27 @@ sub default_version_string
     return $lc_out;
 }
 
+sub scaled_styled_paragraphs
+{
+    my ($lc_styled_ref, $lc_scale) = @_;
+
+    my @lc_out;
+
+    foreach my $lc_paragraph_ref (@$lc_styled_ref)
+    {
+        push(
+            @lc_out,
+            {
+                'text' => $lc_paragraph_ref->{'text'},
+                'font_path' => $lc_paragraph_ref->{'font_path'},
+                'base_font_size' => ($lc_paragraph_ref->{'base_font_size'} * $lc_scale),
+            }
+        );
+    }
+
+    return @lc_out;
+}
+
 
 # Stop the program with a user-facing error message.
 sub fail
@@ -897,6 +918,7 @@ sub render_card_face
     my $lc_index;                # Line-item index while compositing images.
     my $lc_card_x;               # Left offset used to center the scaled content image on the card.
     my $lc_card_y;               # Top offset used to center the scaled content image on the card.
+    my $lc_got_the_shrink;       # Flag to tell me if it managed to survive the shrinkage.
 
     $lc_magick = find_magick();
     $lc_hmargin = defined($opt{'hmargin'}) ? $opt{'hmargin'} : int( ($lc_width * 0.10) + 0.5 );
@@ -929,15 +951,39 @@ sub render_card_face
     ($lc_try_card_fh, $lc_try_card_path) = tempfile('cartovanta-card-output-XXXXXX', DIR => $opt{'deck_tmp_dir'}, SUFFIX => '.png', UNLINK => 0);
     close($lc_try_card_fh);
 
-    ($lc_content_width, $lc_content_height, $lc_items_ref) = build_card_content_layout(\@lc_styled, $lc_temp_dir, $lc_text_width);
 
-    if ( ($lc_content_width <= 0) || ($lc_content_height <= 0) )
+
+
+    $lc_scale = 1.0;
+    $lc_got_the_shrink = 0;
+    
+    while ( $lc_scale >= 0.10 )
+    {
+        my @lc2_scaled_styled;
+    
+        @lc2_scaled_styled = scaled_styled_paragraphs(\@lc_styled, $lc_scale);
+    
+        ($lc_content_width, $lc_content_height, $lc_items_ref) =
+            build_card_content_layout(\@lc2_scaled_styled, $lc_temp_dir, $lc_text_width);
+    
+        if ( ($lc_content_width <= $lc_text_width) && ($lc_content_height <= $lc_text_height) )
+        {
+            $lc_got_the_shrink = 1;
+            last;
+        }
+    
+        $lc_scale *= 0.95;
+    }
+    
+    if ( !($lc_got_the_shrink) )
     {
         unlink($lc_content_path);
         unlink($lc_scaled_content_path);
         unlink($lc_try_card_path);
         fail("Unable to fit text inside card bounds for card name '$lc_card_name'.");
     }
+
+
 
     @lc_cmd = (
         $lc_magick,
