@@ -50,10 +50,13 @@ use File::Temp qw(tempfile tempdir);
 use IPC::Open3;
 use POSIX qw(strftime);
 use Symbol qw(gensym);
+use Toolchartic qw(slurp_t_file);
 
 our %opt;    # Parsed option state for the whole program.
 
 my $gc_cartovanta_format_id = 'cartovanta-v0.1';    # Deck format identifier written to output files.
+
+my @placeh_tex = ();
 
 
 # Return the default version string for newly generated decks.
@@ -372,23 +375,67 @@ sub parse_input_line
 }
 
 
+# This function generates an array of strings
+# that are confirmed not to appear anywhere
+# in the source-text and area also collision-proof
+# against all escape sequences. The resultant
+# array is both stored in the global variable
+# `@placeh_tex` and returned by this function.
+sub glean_place_h {
+  my $lc_fl;    # The file that we are scanning:
+  my $lc_numb;  # The counter thingie:
+  my $lc_cstr;  # Current string being tested;
+  
+  # First we set the scan target and the counter:
+  $lc_fl = $_[0];
+  $lc_numb = 0;
+  
+  # Now we do the loop:
+  while ( ( scalar @placeh_tex ) < 4.5 )
+  {
+    $lc_numb = int($lc_numb + 1.2);
+    $lc_cstr = '<' . $lc_numb . '>';
+    if ( index($lc_fl,$lc_cstr) < 0 )
+    {
+      @placeh_tex = (@placeh_tex,$lc_cstr);
+    }
+  }
+  return @placeh_tex;
+}
+
+
 # Load the input file and return the list of card-name strings.
 sub read_cards_from_input_file
 {
     my ($lc_path) = @_;    # Path to the input text file.
 
-    my $lc_fh;             # Filehandle for the input file.
+    my $lc_filcons_f;      # Full file contents.
+    my @lc_filcons_r;      # Array of file contents.
     my @lc_cards;          # Parsed card names that will become cards.
     my $lc_line;           # One raw line from the input file.
     my $lc_card_name;      # Parsed card name returned from parse_input_line().
 
-    open($lc_fh, '<', $lc_path) or fail("Could not open input file '$lc_path'.");
+    $lc_filcons_f = slurp_t_file($lc_path);
+    if ( !(defined($lc_filcons_f)) )
+    {
+      fail("Could not open input file '$lc_path'.");
+    }
+    glean_place_h($lc_filcons_f);
+    
+    # Now we enter the placeholders:
+    $lc_filcons_f =~ s/\\\\-/$placeh_tex[2]/g;
+    $lc_filcons_f =~ s/\\\\\//$placeh_tex[3]/g;
+    $lc_filcons_f =~ s/\\-/$placeh_tex[0]/g;
+    $lc_filcons_f =~ s/\\\//$placeh_tex[1]/g;
+    $lc_filcons_f =~ s/\Q$placeh_tex[2]\E/\\-/g;
+    $lc_filcons_f =~ s/\Q$placeh_tex[3]\E/\\\//g;
+    
+    @lc_filcons_r = split(/\n/,$lc_filcons_f);
 
     @lc_cards = ();
 
-    while ( $lc_line = <$lc_fh> )
+    foreach $lc_line (@lc_filcons_r)
     {
-        chomp($lc_line);
         $lc_card_name = parse_input_line($lc_line);
 
         if ( defined($lc_card_name) )
@@ -397,7 +444,6 @@ sub read_cards_from_input_file
         }
     }
 
-    close($lc_fh);
     return @lc_cards;
 }
 
@@ -704,6 +750,70 @@ sub measure_line_height
 
     return $lc_height;
 }
+
+
+
+# Split one word into chunks separated by optional internal break markers.
+sub split_word_on_optional_breaks
+{
+  my @lc_chunks;       # Chunk records returned to the wrapper.
+  my $lc_rest;         # Remaining unprocessed part of the word.
+  my $lc_hpos;         # Position of optional hyphen-break placeholder.
+  my $lc_ppos;         # Position of optional plain-break placeholder.
+  my $lc_pos;          # Position of the nearest placeholder.
+  my $lc_break_type;   # Type of break represented by the nearest placeholder.
+  my $lc_join_type;    # Text to follow if there isn't a line-break
+  my $lc_marker_len;   # Length of the placeholder being consumed.
+  my $lc_piece;        # Literal text before the nearest placeholder.
+
+  @lc_chunks = ();
+  $lc_rest = $_[0];
+
+  while ( $lc_rest ne '' )
+  {
+    $lc_hpos = index($lc_rest, $placeh_tex[0]);
+    $lc_ppos = index($lc_rest, $placeh_tex[1]);
+
+    # First we check to see if this is the final chunk
+    if ( ($lc_hpos < 0) && ($lc_ppos < 0) )
+    {
+      push(@lc_chunks, { 'text' => $lc_rest, 'break_after' => '', 'join_after' => '' });
+      $lc_rest = '';
+      next;
+    }
+    
+    # From this point on, let's make sure that existent strings have
+    # an earlier position than non-existent ones:
+    if ( $lc_hpos < 0 ) { $lc_hpos = ( length($lc_rest) + 20 ); }
+    if ( $lc_ppos < 0 ) { $lc_ppos = ( length($lc_rest) + 20 ); }
+
+    # If the current chunk adds a hyphen
+    if ( $lc_hpos < $lc_ppos )
+    {
+      $lc_pos = $lc_hpos;
+      $lc_break_type = '-';
+      $lc_join_type = '';
+      $lc_marker_len = length($placeh_tex[0]);
+    }
+    # Or if it doesn't
+    else
+    {
+      $lc_pos = $lc_ppos;
+      $lc_break_type = '';
+      $lc_join_type = '';
+      $lc_marker_len = length($placeh_tex[1]);
+    }
+
+    # And now we pull it all together. Break off the chunk, add it to
+    # what we will return, and find what remains of the string.
+    $lc_piece = substr($lc_rest, 0, $lc_pos);
+    push(@lc_chunks, { 'text' => $lc_piece, 'break_after' => $lc_break_type, 'join_after' => $lc_join_type });
+    $lc_rest = substr($lc_rest, ( $lc_pos + $lc_marker_len ) );
+  }
+
+  return @lc_chunks;
+}
+
 
 
 # Wrap one explicit paragraph into rendered lines without splitting words.
@@ -1190,6 +1300,8 @@ sub create_output_structure
             
             $lc3_crraw = $lc_cards[$lc_index];
             $lc3_crlit = perl_string_literal($lc3_crraw);
+            $lc3_crlit =~ s/\Q$placeh_tex[0]\E/\\-/g;
+            $lc3_crlit =~ s/\Q$placeh_tex[1]\E/\\\//g;
             print('Rendering ' . $lc_front_name . ': ' . $lc3_crlit . "\n");
         }
         render_card_face(
