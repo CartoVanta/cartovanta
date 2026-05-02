@@ -816,56 +816,97 @@ sub split_word_on_optional_breaks
 
 
 
-# Wrap one explicit paragraph into rendered lines without splitting words.
+# Wrap one explicit paragraph into rendered lines, allowing explicit optional
+# break markers inside otherwise-unbreakable words.
 sub wrap_paragraph_lines
 {
-    my ($lc_paragraph_ref, $lc_pointsize, $lc_text_width) = @_;    # Paragraph data, point size, and preferred text width.
+  my ($lc_paragraph_ref, $lc_pointsize, $lc_text_width);  # Paragraph data, point size, and preferred text width.
+  my @lc_words;                   # Whitespace-separated word groups from the paragraph text.
+  my @lc_lines;                   # Wrapped lines returned to the renderer.
+  my $lc_current;                 # Current line under construction.
+  my $lc_current_break_after;     # Break marker to append if the current line ends at an optional break.
+  my $lc_word;                    # One whitespace-separated word group.
+  my @lc_chunks;                  # Optional-break chunks from the current word.
+  my $lc_chunk_ref;               # One optional-break chunk record.
+  my $lc_piece;                   # Visible text for the current chunk.
+  my $lc_candidate;               # Candidate line formed by adding one more piece.
+  my $lc_candidate_width;         # Width of the candidate rendered line.
+  my $lc_candidate_height;        # Height of the candidate rendered line.
+  my $lc_need_space;              # Whether the next piece needs a normal inter-word space.
 
-    my @lc_words;           # Words from the paragraph text.
-    my @lc_lines;           # Wrapped lines that avoid splitting words.
-    my $lc_current;         # Current line under construction.
-    my $lc_word;            # One word while building wrapped lines.
-    my $lc_candidate;       # Candidate line formed by adding one more word.
-    my $lc_candidate_width; # Width of the candidate rendered line.
-    my $lc_candidate_height;# Height of the candidate rendered line.
+  ($lc_paragraph_ref, $lc_pointsize, $lc_text_width) = @_;
 
-    if ( $lc_paragraph_ref->{'text'} eq '' )
+  # Preserve explicit empty paragraphs as blank rendered lines.
+  if ( $lc_paragraph_ref->{'text'} eq '' )
+  {
+    return ('');
+  }
+
+  # Split the paragraph into words and initialize the wrapping state.
+  @lc_words = split(/\s+/, $lc_paragraph_ref->{'text'});
+  @lc_lines = ();
+  $lc_current = '';
+  $lc_current_break_after = '';
+
+  # Add each word to the wrapped output, breaking only at spaces or at
+  # explicit optional-break markers inside the word.
+  foreach $lc_word (@lc_words)
+  {
+    # Split the word into optional-break chunks and remember whether the
+    # first chunk needs a normal inter-word space before it.
+    @lc_chunks = split_word_on_optional_breaks($lc_word);
+    $lc_need_space = ( $lc_current ne '' );
+
+    # Try to add each optional-break chunk to the current rendered line.
+    # If a chunk will not fit, finish the current line and start a new one.
+    foreach $lc_chunk_ref (@lc_chunks)
     {
-        return ('');
-    }
+      # Pull out the literal text for this chunk before testing whether it fits.
+      $lc_piece = $lc_chunk_ref->{'text'};
 
-    @lc_words = split(/\s+/, $lc_paragraph_ref->{'text'});
-    @lc_lines = ();
-    $lc_current = '';
+      # If the current line is empty, start it with this chunk.
+      if ( $lc_current eq '' )
+      {
+        $lc_current = $lc_piece;
+        $lc_current_break_after = $lc_chunk_ref->{'break_after'};
+      }
+      # Otherwise, test whether this chunk can be added to the existing line.
+      else
+      {
+        # Build the possible next line and measure it before accepting it.
+        $lc_candidate = $lc_current . ( $lc_need_space ? ' ' : '' ) . $lc_piece;
+        ($lc_candidate_width, $lc_candidate_height) =
+          measure_single_line($lc_candidate, $lc_paragraph_ref->{'font_path'}, $lc_pointsize);
 
-    foreach $lc_word (@lc_words)
-    {
-        if ( $lc_current eq '' )
-        {
-            $lc_current = $lc_word;
-            next;
-        }
-
-        $lc_candidate = $lc_current . ' ' . $lc_word;
-        ($lc_candidate_width, $lc_candidate_height) = measure_single_line($lc_candidate, $lc_paragraph_ref->{'font_path'}, $lc_pointsize);
-
+        # If the candidate still fits, accept it as the current line.
         if ( $lc_candidate_width <= $lc_text_width )
         {
-            $lc_current = $lc_candidate;
+          $lc_current = $lc_candidate;
+          $lc_current_break_after = $lc_chunk_ref->{'break_after'};
         }
+        # If the candidate is too wide, finish the current line and start
+        # the next line with this chunk.
         else
         {
-            push(@lc_lines, $lc_current);
-            $lc_current = $lc_word;
+          push(@lc_lines, $lc_current . $lc_current_break_after);
+          $lc_current = $lc_piece;
+          $lc_current_break_after = $lc_chunk_ref->{'break_after'};
         }
-    }
+      }
 
-    if ( $lc_current ne '' )
-    {
-        push(@lc_lines, $lc_current);
+      # After this chunk, any remaining chunks are still part of the same word.
+      $lc_need_space = 0;
     }
+  }
 
-    return @lc_lines;
+  # Save the last line; no optional break marker is appended here because
+  # no line break was forced after it.
+  if ( $lc_current ne '' )
+  {
+    push(@lc_lines, $lc_current);
+  }
+
+  return @lc_lines;
 }
 
 
