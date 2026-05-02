@@ -56,6 +56,9 @@ our %opt;    # Parsed option state for the whole program.
 
 my $gc_cartovanta_format_id = 'cartovanta-v0.1';    # Deck format identifier written to output files.
 
+# A hashref to assure that no card-name is used twice.
+my $names_they_took = {};
+
 my @placeh_tex = ();
 
 
@@ -1278,6 +1281,7 @@ sub create_output_structure
     my $lc_meta_data;       # Perl structure that becomes meta.json.
     my $lc_deck_fh;         # Filehandle for deck.json.
     my $lc_meta_fh;         # Filehandle for meta.json.
+    my $lc_norm_name;       # Name normalized for adding to official card name
 
     $lc_output_dir = $opt{'output_directory_path'};
     $lc_parent_dir = (fileparse($lc_output_dir))[1];
@@ -1351,12 +1355,18 @@ sub create_output_structure
             $lc_front_width,
             $lc_front_height,
         );
+        
+        $lc_norm_name = $lc_cards[$lc_index];
+        $lc_norm_name =~ s/\Q$placeh_tex[0]\E/\\-/g;
+        $lc_norm_name =~ s/\Q$placeh_tex[1]\E/\\\//g;
+        $lc_norm_name = substr($lc_norm_name, 0, 40);
+        name_of_unique($lc_norm_name);
 
         push(
             @lc_json_cards,
             {
                 'id' => 'card-' . $lc_number_string,
-                'name' => $lc_cards[$lc_index],
+                'name' => $lc_norm_name,
                 'frontImage' => 'imagia/' . $lc_front_name,
                 'meta' => {},
             }
@@ -1401,6 +1411,39 @@ sub create_output_structure
         remove_tree($opt{'deck_tmp_dir'});
     }
 }
+
+# Make sure the same name is never used up twice.
+sub name_of_unique {
+  my $lc_arg;
+  my $lc_count;
+  my $lc_cur;
+  
+  # Know what the going-in name is.
+  $lc_arg = $_[0];
+  
+  # If the current name was not used, we're done.
+  if ( !($names_they_took->{$lc_arg}) )
+  {
+    $names_they_took->{$lc_arg} = 1;
+    return;
+  }
+  
+  # Otherwise, we will have to start with number variations.
+  $lc_count = 0;
+  while (1)
+  {
+    $lc_count = int($lc_count + 1.2);
+    $lc_cur = $lc_arg . ' (' . $lc_count . ')';
+    if ( !($names_they_took->{$lc_cur}) )
+    {
+      $names_they_took->{$lc_cur} = 1;
+      $_[0] = $lc_cur;
+      return;
+    }
+  }
+}
+
+
 
 sub perl_string_literal
 {
